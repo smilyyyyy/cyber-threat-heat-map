@@ -1,0 +1,59 @@
+name: threat-heatmap
+services:
+  db:
+    build: ./db
+    container_name: threat-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-threat}
+      POSTGRES_PASSWORD: ${DB_PASS:-threat123}
+      POSTGRES_DB: ${DB_NAME:-threatdb}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:-grafana_ro_pass}
+    ports:
+      - "127.0.0.1:5432:5432"          # reachable from this laptop only
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-threat} -d ${DB_NAME:-threatdb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  collector:
+    build: ./collector
+    container_name: threat-collector
+    env_file: .env
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-threatdb}
+      DB_USER: ${DB_USER:-threat}
+      DB_PASS: ${DB_PASS:-threat123}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:-grafana_ro_pass}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  grafana:
+    build: ./grafana
+    container_name: threat-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin123}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:-grafana_ro_pass}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/cyber-threat-heatmap.json
+      GF_USERS_DEFAULT_THEME: dark
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - grafana:/var/lib/grafana
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  grafana:
